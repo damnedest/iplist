@@ -389,6 +389,70 @@ sed -i '/sed -i/s/^/\t#/; /\/etc\/init.d\/cron restart >/s/^/\t#/' /etc/init.d/h
 
 Подробнее о формате [Switchy RuleList](https://code.google.com/archive/p/switchy/wikis/RuleList.wiki)
 
+## Локальные скрипты
+
+В каталоге `scripts/` лежат вспомогательные CLI-скрипты для проверки IPv4/CIDR4
+и сборки route-команд для Keenetic. Запускать их нужно из корня репозитория.
+
+### Проверка покрытия `ip4` блоками `cidr4`
+
+Скрипт проверяет один JSON-конфиг и завершает работу с кодом `1`, если в файле
+есть невалидные IPv4/CIDR4 или если какой-либо адрес из `ip4` не попадает ни в
+один блок из `cidr4`.
+
+```shell
+php scripts/check-ip4-covered-by-cidr4.php config/ai/chatgpt.com.json
+```
+
+### Keenetic routes из `cidr4`
+
+Скрипт собирает `cidr4` из конфигов, удаляет дубликаты, объединяет
+пересекающиеся и соседние диапазоны, а затем печатает команды `route add` для
+Keenetic `.bat` в stdout. Статистика печатается в stderr.
+
+Без аргументов используется встроенный набор популярных конфигов:
+
+```shell
+php scripts/build-keenetic-routes-from-cidr4.php > keenetic-cidr4.bat
+```
+
+Можно передать конкретные конфиги:
+
+```shell
+php scripts/build-keenetic-routes-from-cidr4.php \
+  config/ai/chatgpt.com.json \
+  config/ai/claude.ai.json \
+  > keenetic-cidr4.bat
+```
+
+### Keenetic routes из `ip4`
+
+Скрипт строит lossless CIDR4-маршруты только из точечных IPv4-адресов `ip4`.
+Это полезно, когда нужно не расширять маршрутизацию до широких CIDR4-блоков.
+
+Без аргументов используется тот же встроенный набор популярных конфигов:
+
+```shell
+php scripts/build-keenetic-routes-from-ip4.php > keenetic-ip4.bat
+```
+
+Для запуска по отдельным конфигам:
+
+```shell
+php scripts/build-keenetic-routes-from-ip4.php \
+  config/ai/chatgpt.com.json \
+  config/ai/claude.ai.json \
+  > keenetic-ip4.bat
+```
+
+Справка по каждому скрипту доступна через `--help`:
+
+```shell
+php scripts/build-keenetic-routes-from-cidr4.php --help
+php scripts/build-keenetic-routes-from-ip4.php --help
+php scripts/check-ip4-covered-by-cidr4.php --help
+```
+
 ### License
 
 The MIT License (MIT). Please see [LICENSE](./LICENSE) for more information.

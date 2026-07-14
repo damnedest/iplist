@@ -1,0 +1,1 @@
+{ "domains": ["bad.example"], "timeout": 0, "ip4": ["not-an-ip"], "cidr4": [] }

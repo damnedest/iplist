@@ -1,0 +1,1 @@
+{ "domains": ["probe.example"], "timeout": 0, "ip4": [], "cidr4": ["10.0.0.0/8"] }

@@ -1,0 +1,28 @@
+#!/usr/sbin/nft -f
+# Server 2: forward + masquerade traffic arriving from Server 1 over wg0.
+flush ruleset
+
+table inet fw {
+    chain input {
+        type filter hook input priority filter; policy drop;
+        ct state established,related accept
+        iif "lo" accept
+        # keep management SSH reachable on WAN (adjust port if non-standard)
+        tcp dport 22 accept
+        # WireGuard listener
+        udp dport 51820 accept
+        ip protocol icmp accept
+    }
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+        ct state established,related accept
+        iifname "wg0" accept
+    }
+}
+
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "eth0" masquerade
+    }
+}
