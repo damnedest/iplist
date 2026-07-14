@@ -46,12 +46,6 @@ return [
         'ai/perplexity.ai.json',
         'custom/*.json',
         'discord/*.json',
-        'games/roblox.com.json',
-        'hosting/bitninja.com.json',
-        'hosting/hetzner.com.json',
-        'hosting/namecheap.com.json',
-        'hosting/cloudlinux.com.json',
-        'jetbrains/*.json',
         'messengers/messenger.com.json',
         // 'messengers/telegram.org.json', // use official
         'messengers/whatsapp.com.json', // yandex VPN?
@@ -61,7 +55,5 @@ return [
         'socials/linkedin.com.json',
         'socials/x.com.json',
         'tools/medium.com.json',
-        'torrent/rutracker.org.json',
-        'video/kino.pub.json',
     ],
 ];
