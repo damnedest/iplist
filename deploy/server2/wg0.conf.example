@@ -1,0 +1,12 @@
+# /etc/wireguard/wg0.conf on Server 2 (target-jurisdiction egress gateway).
+# Fill <PLACEHOLDERS>. Generate keys: wg genkey | tee privkey | wg pubkey > pubkey
+[Interface]
+Address = 10.9.9.2/30
+ListenPort = 51820
+PrivateKey = <SERVER2_PRIVATE_KEY>
+# no default-route games here; this box just NATs what arrives on wg0
+
+[Peer]
+# Server 1
+PublicKey = <SERVER1_WG1_PUBLIC_KEY>
+AllowedIPs = 10.9.9.1/32

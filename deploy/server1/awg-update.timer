@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily AWG CIDR set refresh
+
+[Timer]
+OnCalendar=*-*-* 04:17:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

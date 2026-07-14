@@ -1,0 +1,22 @@
+# /etc/amnezia/amneziawg/awg0.conf on Server 1 (client-facing AWG 2.0 interface).
+# AWG 2.0 obfuscation params (Jc/Jmin/Jmax/S1/S2/H1..H4 + 2.0: I1..I5, Itime) MUST
+# match the client config exactly. Values below are placeholders — generate a real set.
+[Interface]
+Address = 10.9.0.1/24
+ListenPort = 51820
+PrivateKey = <SERVER1_AWG_PRIVATE_KEY>
+Jc = 4
+Jmin = 40
+Jmax = 70
+S1 = 0
+S2 = 0
+H1 = <H1>
+H2 = <H2>
+H3 = <H3>
+H4 = <H4>
+# I1..I5 / Itime: AWG 2.0 junk-packet templates — set per your obfuscation profile.
+
+[Peer]
+# one block per client
+PublicKey = <CLIENT_PUBLIC_KEY>
+AllowedIPs = 10.9.0.2/32

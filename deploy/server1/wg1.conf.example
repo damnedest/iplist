@@ -1,0 +1,15 @@
+# /etc/wireguard/wg1.conf on Server 1 (plain WG uplink to Server 2).
+# Table = off: wg-quick must NOT install a default route into the main table.
+# The policy-routing rule (awg-pbr.service) sends only marked traffic here.
+[Interface]
+Address = 10.9.9.1/30
+PrivateKey = <SERVER1_WG1_PRIVATE_KEY>
+Table = off
+MTU = 1420
+
+[Peer]
+# Server 2
+PublicKey = <SERVER2_WG0_PUBLIC_KEY>
+Endpoint = <SERVER2_PUBLIC_IP>:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
