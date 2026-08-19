@@ -38,6 +38,24 @@ final class ConfigListsTest extends TestCase {
         'video/kino.pub.json',
     ];
 
+    private const AWG = [
+        'ai/aistudio.google.com.json',
+        'ai/chatgpt.com.json',
+        'ai/claude.ai.json',
+        'ai/grok.com.json',
+        'ai/perplexity.ai.json',
+        'custom/*.json',
+        'discord/*.json',
+        'messengers/messenger.com.json',
+        'messengers/whatsapp.com.json',
+        'music/spotify.com.json',
+        'socials/facebook.com.json',
+        'socials/instagram.com.json',
+        'socials/linkedin.com.json',
+        'socials/x.com.json',
+        'tools/medium.com.json',
+    ];
+
     private function lists(): array {
         return require __DIR__ . '/../../config/lists.php';
     }
@@ -46,12 +64,20 @@ final class ConfigListsTest extends TestCase {
         self::assertSame(self::KEENETIC, $this->lists()['keenetic']);
     }
 
-    public function testAwgSeededAsCopyOfKeenetic(): void {
-        $lists = $this->lists();
-        self::assertSame($lists['keenetic'], $lists['awg']);
+    /**
+     * awg started as a copy of keenetic and was curated down in abd44e3e (router-only
+     * entries dropped: games, hosting, jetbrains, torrent, video). What still has to
+     * hold is containment — awg must never route something keenetic does not.
+     */
+    public function testAwgIsCuratedSubsetOfKeenetic(): void {
+        self::assertSame(self::AWG, $this->lists()['awg']);
+        self::assertSame([], array_diff(self::AWG, self::KEENETIC));
     }
 
-    public function testYoutubeList(): void {
-        self::assertSame(['youtube/youtube.com.json'], $this->lists()['youtube']);
+    public function testYoutubeListDeclaresFilesAndSubtractsKeenetic(): void {
+        self::assertSame(
+            ['files' => ['youtube/youtube.com.json'], 'subtract' => ['keenetic']],
+            $this->lists()['youtube']
+        );
     }
 }

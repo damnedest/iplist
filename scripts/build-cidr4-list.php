@@ -41,7 +41,8 @@ foreach (array_slice($argv, 1) as $arg) {
     }
 }
 
-if ($paths === []) {
+$usingList = $paths === [];
+if ($usingList) {
     try {
         $paths = resolveList($list, $rootDir . '/config');
     } catch (\RuntimeException $e) {
@@ -55,10 +56,21 @@ if ($paths === []) {
 }
 
 try {
-    $cidrs = computeEffectiveCidr4($paths, $rootDir . '/config/check', true);
+    // Explicit file arguments mean "just these files"; a named list also honours the
+    // 'subtract' declaration that keeps it disjoint from the main list.
+    $cidrs = $usingList
+        ? computeListCidr4($list, $rootDir . '/config', $rootDir . '/config/check', true)
+        : computeEffectiveCidr4($paths, $rootDir . '/config/check', true);
 } catch (\RuntimeException $e) {
     fwrite(STDERR, cc($e->getMessage(), "1;31") . "\n");
     exit(1);
+}
+
+if ($usingList) {
+    $subtracted = resolveSubtract($list, $rootDir . '/config');
+    if ($subtracted !== []) {
+        fwrite(STDERR, cc("Subtracted lists:", "1;36") . " " . implode(", ", $subtracted) . "\n");
+    }
 }
 
 $lstOk = file_put_contents($lstPath, formatAwgLst($cidrs)) !== false;

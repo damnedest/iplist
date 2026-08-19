@@ -38,7 +38,8 @@ foreach ($args as $arg) {
     }
 }
 
-if ($paths === []) {
+$usingList = $paths === [];
+if ($usingList) {
     try {
         $paths = resolveList($list, __DIR__ . '/../config');
     } catch (\RuntimeException $e) {
@@ -186,6 +187,22 @@ foreach (array_keys($cidrs) as $cidr) {
     } else {
         $effectiveCidrs[] = $cidr;
     }
+}
+
+// A named list may declare that it must stay disjoint from another one. Applied after
+// the check punch-outs so both subtractions land on the same effective set.
+$subtracted = $usingList ? resolveSubtract($list, __DIR__ . '/../config') : [];
+if ($subtracted !== []) {
+    $beforeSubtract = count($effectiveCidrs);
+    $effectiveCidrs = subtractRangesFromCidr4(
+        $effectiveCidrs,
+        listSubtractRanges($list, __DIR__ . '/../config', __DIR__ . '/../config/check')
+    );
+    fwrite(
+        STDERR,
+        c("Subtracted lists:", "1;36") . " " . c(implode(", ", $subtracted), "1") .
+            c(" (" . $beforeSubtract . " → " . count($effectiveCidrs) . " CIDR4 before merge)", "2") . "\n"
+    );
 }
 
 $routes = 0;

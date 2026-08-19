@@ -196,6 +196,48 @@ function subtractRange(array $input, array $subtrahends): array {
     return $result;
 }
 
+/**
+ * Removes every address covered by $subtrahends from $cidrs, splitting prefixes that
+ * are only partially covered. Returns unaggregated CIDR strings, deduplicated.
+ *
+ * @param array<int, string> $cidrs
+ * @param array<int, array{int, int}> $subtrahends
+ * @return array<int, string>
+ */
+function subtractRangesFromCidr4(array $cidrs, array $subtrahends): array {
+    if ($subtrahends === []) {
+        return array_values(array_unique($cidrs));
+    }
+
+    $out = [];
+    foreach ($cidrs as $cidr) {
+        $range = parseCidr4($cidr);
+        if ($range === null) {
+            continue;
+        }
+
+        $overlap = [];
+        foreach ($subtrahends as $sub) {
+            if (rangesIntersect($range[0], $range[1], $sub[0], $sub[1])) {
+                $overlap[] = $sub;
+            }
+        }
+
+        if ($overlap === []) {
+            $out[$cidr] = true;
+            continue;
+        }
+
+        foreach (subtractRange($range, $overlap) as [$rStart, $rEnd]) {
+            foreach (rangeToCidrs($rStart, $rEnd) as $rc) {
+                $out[$rc] = true;
+            }
+        }
+    }
+
+    return array_keys($out);
+}
+
 function isValidIp4(string $ip): bool {
     return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false;
 }
@@ -304,38 +346,59 @@ function computeEffectiveCidr4(array $paths, ?string $checkDir = null, bool $inc
     }
 
     $checkRanges = ($checkDir !== null && is_dir($checkDir)) ? loadCheckRanges($checkDir) : [];
-    if ($checkRanges !== []) {
-        $effective = [];
-        foreach (array_keys($cidrs) as $cidr) {
-            $range = parseCidr4($cidr);
-            if ($range === null) {
-                continue;
-            }
-            $overlap = [];
-            foreach ($checkRanges as $check) {
-                [$bStart, $bEnd] = $check['range'];
-                if (rangesIntersect($range[0], $range[1], $bStart, $bEnd)) {
-                    $overlap[] = $check['range'];
-                }
-            }
-            if ($overlap === []) {
-                $effective[$cidr] = true;
-                continue;
-            }
-            foreach (subtractRange($range, $overlap) as [$rStart, $rEnd]) {
-                foreach (rangeToCidrs($rStart, $rEnd) as $rc) {
-                    $effective[$rc] = true;
-                }
-            }
-        }
-        $cidrs = $effective;
-    }
+    $effective = subtractRangesFromCidr4(
+        array_keys($cidrs),
+        array_map(fn(array $check): array => $check['range'], $checkRanges)
+    );
 
     $out = [];
-    foreach (aggregateCidr4(array_keys($cidrs)) as $c) {
+    foreach (aggregateCidr4($effective) as $c) {
         $out[] = $c;
     }
     return $out;
+}
+
+/**
+ * Reads $name's raw declaration from the lists file. A list is either a flat array of
+ * path globs (the common form) or a map with 'files' and an optional 'subtract' naming
+ * other lists whose addresses must never appear in this one.
+ *
+ * @return array{files: array<int, string>, subtract: array<int, string>}
+ * @throws \RuntimeException if the lists file is missing/unreadable or $name is undefined.
+ */
+function readListEntry(string $name, string $configDir, ?string $listsFile = null): array {
+    $listsFile ??= $configDir . '/lists.php';
+    if (!is_file($listsFile) || !is_readable($listsFile)) {
+        throw new \RuntimeException("Lists file not found or unreadable: {$listsFile}");
+    }
+
+    $lists = require $listsFile;
+    if (!is_array($lists) || !array_key_exists($name, $lists) || !is_array($lists[$name])) {
+        $known = is_array($lists) ? implode(', ', array_keys($lists)) : '(none)';
+        throw new \RuntimeException("Unknown config list '{$name}'. Known lists: {$known}");
+    }
+
+    $entry = $lists[$name];
+    if (!array_key_exists('files', $entry) && !array_key_exists('subtract', $entry)) {
+        return ['files' => array_values($entry), 'subtract' => []];
+    }
+
+    $files = $entry['files'] ?? [];
+    $subtract = $entry['subtract'] ?? [];
+    if (!is_array($files) || !is_array($subtract)) {
+        throw new \RuntimeException("List '{$name}': 'files' and 'subtract' must both be arrays.");
+    }
+
+    return ['files' => array_values($files), 'subtract' => array_values($subtract)];
+}
+
+/**
+ * Names of the lists whose effective addresses must be subtracted from $name's own.
+ *
+ * @return array<int, string>
+ */
+function resolveSubtract(string $name, string $configDir, ?string $listsFile = null): array {
+    return readListEntry($name, $configDir, $listsFile)['subtract'];
 }
 
 /**
@@ -348,20 +411,9 @@ function computeEffectiveCidr4(array $paths, ?string $checkDir = null, bool $inc
  * @throws \RuntimeException if the lists file is missing/unreadable or $name is undefined.
  */
 function resolveList(string $name, string $configDir, ?string $listsFile = null): array {
-    $listsFile ??= $configDir . '/lists.php';
-    if (!is_file($listsFile) || !is_readable($listsFile)) {
-        throw new \RuntimeException("Lists file not found or unreadable: {$listsFile}");
-    }
-
-    $lists = require $listsFile;
-    if (!is_array($lists) || !array_key_exists($name, $lists) || !is_array($lists[$name])) {
-        $known = is_array($lists) ? implode(', ', array_keys($lists)) : '(none)';
-        throw new \RuntimeException("Unknown config list '{$name}'. Known lists: {$known}");
-    }
-
     $checkPrefix = rtrim($configDir, '/') . '/check/';
     $files = [];
-    foreach ($lists[$name] as $entry) {
+    foreach (readListEntry($name, $configDir, $listsFile)['files'] as $entry) {
         foreach (glob($configDir . '/' . $entry, GLOB_NOSORT) ?: [] as $path) {
             if (!is_file($path) || str_starts_with($path, $checkPrefix)) {
                 continue;
@@ -373,4 +425,85 @@ function resolveList(string $name, string $configDir, ?string $listsFile = null)
     $files = array_keys($files);
     sort($files, SORT_STRING);
     return $files;
+}
+
+/**
+ * Ranges owned by every list named in $name's 'subtract' declaration, resolved
+ * recursively so a subtracted list may itself subtract others.
+ *
+ * @param array<string, bool> $seen guards against a subtract cycle
+ * @return array<int, array{int, int}>
+ */
+function listSubtrahendRanges(
+    string $name,
+    string $configDir,
+    ?string $checkDir,
+    bool $includeIp4,
+    ?string $listsFile,
+    array $seen
+): array {
+    $ranges = [];
+    foreach (resolveSubtract($name, $configDir, $listsFile) as $other) {
+        foreach (computeListCidr4($other, $configDir, $checkDir, $includeIp4, $listsFile, $seen) as $cidr) {
+            $range = parseCidr4($cidr);
+            if ($range !== null) {
+                $ranges[] = $range;
+            }
+        }
+    }
+
+    return $ranges;
+}
+
+/**
+ * Same as listSubtrahendRanges(), for callers that build their own CIDR set and only
+ * need the ranges to punch out of it.
+ *
+ * @return array<int, array{int, int}>
+ */
+function listSubtractRanges(
+    string $name,
+    string $configDir,
+    ?string $checkDir = null,
+    bool $includeIp4 = true,
+    ?string $listsFile = null
+): array {
+    return listSubtrahendRanges($name, $configDir, $checkDir, $includeIp4, $listsFile, [$name => true]);
+}
+
+/**
+ * Effective CIDR4 set of a named list: its own configs, minus the check punch-outs,
+ * minus every list it declares in 'subtract'. The subtraction is what keeps two
+ * generated route files disjoint — the same prefix emitted into both leaves the router
+ * picking an interface arbitrarily, so a broad prefix in the narrower list silently
+ * hijacks traffic that belongs to the main one.
+ *
+ * @return array<int, string>
+ * @throws \RuntimeException on an unknown list or a circular 'subtract' declaration.
+ */
+function computeListCidr4(
+    string $name,
+    string $configDir,
+    ?string $checkDir = null,
+    bool $includeIp4 = true,
+    ?string $listsFile = null,
+    array $seen = []
+): array {
+    if (isset($seen[$name])) {
+        throw new \RuntimeException("Circular 'subtract' declaration involving list '{$name}'.");
+    }
+    $seen[$name] = true;
+
+    $cidrs = computeEffectiveCidr4(resolveList($name, $configDir, $listsFile), $checkDir, $includeIp4);
+    $ranges = listSubtrahendRanges($name, $configDir, $checkDir, $includeIp4, $listsFile, $seen);
+    if ($ranges === []) {
+        return $cidrs;
+    }
+
+    $out = [];
+    foreach (aggregateCidr4(subtractRangesFromCidr4($cidrs, $ranges)) as $c) {
+        $out[] = $c;
+    }
+
+    return $out;
 }

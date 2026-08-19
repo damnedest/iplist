@@ -34,8 +34,16 @@ return [
         'torrent/rutracker.org.json',
         'video/kino.pub.json',
     ],
+    // Kept strictly disjoint from 'keenetic': the YouTube config carries broad
+    // non-Google blocks (Cloudflare 104.16.0.0/12 and 172.64.0.0/13, Azure
+    // 52.160.0.0/11, plus GGC prefixes aggregated up to /7) that otherwise land in
+    // both .bat files and hijack traffic owned by the main list — ChatGPT resolves
+    // entirely into those two Cloudflare blocks.
     'youtube' => [
-        'youtube/youtube.com.json',
+        'files' => [
+            'youtube/youtube.com.json',
+        ],
+        'subtract' => ['keenetic'],
     ],
     // Seeded as a copy of 'keenetic'; curated/edited going forward.
     'awg' => [
