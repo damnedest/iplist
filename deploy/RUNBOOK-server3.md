@@ -7,7 +7,8 @@ plain kernel WireGuard uplink (`wg1`) to **Server 2**, which NATs it out. Everyt
 exits Server 3 directly. If `wg1` is down, marked traffic is **blackholed (fail-closed)**.
 
 Run every step as **root**. Each step ends with a verification. **Step 7 arms an
-auto-rollback timer before any network change.** Spec:
+auto-rollback timer before the firewall change and disarms it once SSH is confirmed
+alive.** Spec:
 `docs/superpowers/specs/2026-09-19-awg31-server3-migration-design.md`.
 
 ## 0. Prerequisites
@@ -15,7 +16,7 @@ auto-rollback timer before any network change.** Spec:
   `ip -br link` (Server 1 had `eth0`; use what you see, referred to as `<WAN>` below).
 - Server 2 up; you have its `wg0` **public key** and **public IP**.
 - Your SSH port (assumed `22`).
-- Pick the client-facing UDP port now: `shuf -i 20000-60000 -n 1` → `<AWG0_PORT>`.
+- Pick the client-facing UDP port now: `until p=$(shuf -i 20000-60000 -n 1); [ "$p" != 51820 ]; do :; done; echo $p` → `<AWG0_PORT>` (never 51820).
   Write it down; it goes into `awg0.conf` and into every client config.
 
 ## 1. Packages + kernel headers probe
@@ -95,7 +96,7 @@ echo "<SERVER3_PUBLIC_IP>" > /etc/amnezia/amneziawg/endpoint-host
 awg-quick strip awg0 >/dev/null && echo "awg0.conf parses"
 wg-quick  strip wg1  >/dev/null && echo "wg1.conf parses"
 ```
-Verify: both `parses` lines; no `<` placeholders left: `grep -n '<' /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/wg1.conf` prints nothing. `git -C /opt/iplist remote -v` shows `fork`.
+Verify: both `parses` lines; no `<` placeholders left: `grep -n '<' /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/wg1.conf /etc/amnezia/amneziawg/endpoint-host` prints nothing. `git -C /opt/iplist remote -v` shows `fork`.
 
 **Give Server 2 this box's `wg1` public key** (`cat /etc/wireguard/wg1.pubkey`) and
 run `RUNBOOK-server2.md` §8 there now.
@@ -128,6 +129,20 @@ nft -f /opt/iplist/generated/awg-set.nft
 ```
 Verify **your SSH session is alive**, then `nft list set inet awg awgvia | head` shows
 a populated interval set.
+```bash
+grep -n '<' /etc/nftables.d/awg.nft          # must print nothing (WAN placeholder replaced)
+nft list chain inet awg postrouting          # both masquerade rules name real interfaces
+```
+```bash
+# SSH still works and the set is populated -> disarm the rollback NOW (it would otherwise
+# fire in 10 minutes, flush table 100 and reload nftables with an EMPTY awgvia set).
+systemctl list-units --plain --no-legend 'run-*.timer'
+systemctl stop $(systemctl list-units --plain --no-legend 'run-*.timer' | awk '{print $1}')
+systemctl list-units --plain --no-legend 'run-*.timer'      # must print nothing
+```
+Re-arm the same `systemd-run` guard before any later step that edits `/etc/nftables.conf`
+or `/etc/nftables.d/awg.nft`; §8–§10 only add `ip rule`/`ip route` entries scoped to
+marked or Telegram traffic and cannot lock you out.
 
 ## 8. systemd units
 ```bash
@@ -165,17 +180,18 @@ app) on a phone/laptop. Verify `awg show awg0` shows a recent handshake for it.
 | 1 | `awg --version; amneziawg-go --version; awg-quick strip awg0 >/dev/null` | 3.1 / 3.1 / parses |
 | 2 | test client 3.1 connects | recent handshake in `awg show awg0` |
 | 3 | old 2.0 client config pointed at Server 3's IP:port | **no** handshake |
-| 4 | netns client, `curl -s` to an IP-echo service whose IP is **not** in the set | Server 3's IP |
-| 5 | netns client, `curl -s` to an IP-echo service whose IP **is** in the set | Server 2's IP |
-| 6 | `systemctl stop wg-quick@wg1` → in-set curl | `000`; direct still works; `start` restores without touching awg-pbr |
-| 7 | `systemctl restart awg-pbr; ip route show table 100` | still has `default dev wg1` |
-| 8 | `curl -o /dev/null https://<large file>` via both paths | completes |
-| 9 | `reboot`; then `systemctl --failed`, re-run 4–6 | 0 failed, all pass |
-| 10 | `sed -i '$d' /var/lib/awg/awg-cidr4.prev` (fake a diff), then `systemctl start awg-update.service` | set reloaded, Telegram message arrives via the tunnel |
-| 11 | on Server 2: `wg show wg0` | both peers, Server 1 handshake never dropped; reboot Server 2 → both come back |
-| 12 | `awg-add-client.sh second` while `testclient` streams; `--remove second`; `awg-add-client.sh testclient` again | no drop; peer gone; no duplicate |
+| 4 | netns client, `curl -s --max-time 10` to an IP-echo service whose IP is **not** in the set | Server 3's IP |
+| 5 | netns client, `curl -s --max-time 10` to an IP-echo service whose IP **is** in the set | Server 2's IP |
+| 6 | from the §9 test client (real awg0 path): curl the in-set echo service and the out-of-set one | Server 2's IP and Server 3's IP respectively |
+| 7 | `systemctl stop wg-quick@wg1` → in-set curl | `000`; direct still works; `start` restores without touching awg-pbr |
+| 8 | `systemctl restart awg-pbr; ip route show table 100` | still has `default dev wg1` |
+| 9 | `curl -o /dev/null https://<large file>` via both paths | completes |
+| 10 | `reboot`; then `systemctl --failed`, re-run 4–7 | 0 failed, all pass |
+| 11 | `systemctl start awg-update.service` once (first run adopts the baseline and sends the "initialized" Telegram message via the tunnel), then `sed -i '$d' /var/lib/awg/awg-cidr4.prev` and `systemctl start awg-update.service` again | both Telegram messages arrive; set reloaded on the second run |
+| 12 | on Server 2: `wg show wg0` | both peers, Server 1 handshake never dropped; reboot Server 2 → both come back |
+| 13 | `awg-add-client.sh second` while `testclient` streams; `--remove second`; `awg-add-client.sh testclient` again | no drop; peer gone; no duplicate |
 
-Rows 4–5: classify each echo service first, then pick one of each kind
+Rows 4–6: classify each echo service first, then pick one of each kind
 (`ifconfig.me`, `api.ipify.org`, `icanhazip.com`, `ip.sb` — the set is broad, so some WILL be in it):
 ```bash
 for h in ifconfig.me api.ipify.org icanhazip.com ip.sb; do
@@ -195,11 +211,14 @@ nft add rule inet awg postrouting oifname "<WAN>" ip saddr 10.99.0.0/30 masquera
 ```
 Remove the two temp rules and the netns afterwards.
 
-## 11. Cancel the rollback timer
+## 11. Confirm no rollback timer is left armed
 ```bash
-systemctl list-timers | grep run-
-systemctl stop <run-xxxx.timer>
+systemctl list-units --plain --no-legend 'run-*.timer'      # must print nothing
 ```
+The §7 guard was disarmed right after the firewall came up. If you re-armed it for a later
+edit, stop it here. A timer that fires looks exactly like a routing bug: empty `awgvia`
+set, missing `default dev wg1` in table 100 — recover with
+`systemctl restart awg-pbr wg-quick@wg1 && nft -f /opt/iplist/generated/awg-set.nft`.
 
 ## 12. Decommission Server 1
 
