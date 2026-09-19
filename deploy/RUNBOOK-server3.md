@@ -64,6 +64,12 @@ The last line shows `awg-quick` defaults to `amneziawg-go` when `/sys/module/amn
 is absent. No override needed.
 
 ## 5. Keys + obfuscation profile
+Clone the fork first so the templates are on the box:
+```bash
+git clone https://github.com/damnedest/iplist.git /opt/iplist
+git -C /opt/iplist remote rename origin fork
+```
+
 ```bash
 umask 077
 mkdir -p /etc/amnezia/amneziawg /etc/wireguard
@@ -78,11 +84,10 @@ H=($(shuf -i 100000-2000000000 -n 4 | sort -n)); for i in 0 1 2 3; do echo "H$((
 Check the four H ranges do not overlap (with a 10000 width and random bases in a
 2e9 space a collision is practically impossible; eyeball it anyway).
 
-Write `/etc/amnezia/amneziawg/awg0.conf` from `deploy/server3/awg0.conf.example`
-(after the repo is cloned in §6 you can `cp` it from `/opt/iplist/deploy/server3/`):
+Write `/etc/amnezia/amneziawg/awg0.conf` from `/opt/iplist/deploy/server3/awg0.conf.example`:
 - `ListenPort = <AWG0_PORT>`, `PrivateKey` = awg0.privkey, `HeaderProtectionKey` = hpk,
   `S1..S4`, `H1..H4` from above. Leave `I1..I5` absent.
-Write `/etc/wireguard/wg1.conf` from `deploy/server3/wg1.conf.example` with wg1.privkey,
+Write `/etc/wireguard/wg1.conf` from `/opt/iplist/deploy/server3/wg1.conf.example` with wg1.privkey,
 Server 2's pubkey and IP. Then:
 ```bash
 chmod 600 /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/wg1.conf
@@ -90,15 +95,13 @@ echo "<SERVER3_PUBLIC_IP>" > /etc/amnezia/amneziawg/endpoint-host
 awg-quick strip awg0 >/dev/null && echo "awg0.conf parses"
 wg-quick  strip wg1  >/dev/null && echo "wg1.conf parses"
 ```
-Verify: both `parses` lines; no `<` placeholders left: `grep -n '<' /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/wg1.conf` prints nothing.
+Verify: both `parses` lines; no `<` placeholders left: `grep -n '<' /etc/amnezia/amneziawg/awg0.conf /etc/wireguard/wg1.conf` prints nothing. `git -C /opt/iplist remote -v` shows `fork`.
 
 **Give Server 2 this box's `wg1` public key** (`cat /etc/wireguard/wg1.pubkey`) and
 run `RUNBOOK-server2.md` §8 there now.
 
-## 6. Clone the fork + sysctl
+## 6. sysctl + generate the CIDR set
 ```bash
-git clone https://github.com/damnedest/iplist.git /opt/iplist
-git -C /opt/iplist remote rename origin fork
 cat > /etc/sysctl.d/99-awg.conf <<'EOF'
 net.ipv4.ip_forward=1
 net.ipv4.conf.all.rp_filter=2
@@ -106,7 +109,7 @@ EOF
 sysctl --system
 cd /opt/iplist && make awg-all
 ```
-Verify: `git -C /opt/iplist remote -v` shows `fork`; `sysctl net.ipv4.ip_forward net.ipv4.conf.all.rp_filter` → `1` and `2`; `generated/awg-set.nft` exists.
+Verify: `sysctl net.ipv4.ip_forward net.ipv4.conf.all.rp_filter` → `1` and `2`; `generated/awg-set.nft` exists.
 
 ## 7. LOCKOUT SAFETY — arm auto-rollback BEFORE nftables
 ```bash
