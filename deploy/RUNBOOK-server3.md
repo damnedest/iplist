@@ -198,4 +198,32 @@ systemctl list-timers | grep run-
 systemctl stop <run-xxxx.timer>
 ```
 
-## 12. Decommission Server 1 — see the next chapter (added in Task 5).
+## 12. Decommission Server 1
+
+**Gate (spec §6.2):** §10 acceptance fully passed **and** every client is on a 3.1
+config and has confirmed it works. Until then, Server 1 is untouched and remains the
+rollback: clients just switch back to their old profile.
+
+Order matters. Step 3 is the point of no return.
+
+1. **Server 2 — drop Server 1's peer** (`RUNBOOK-server2.md` §9). Verify Server 3's
+   handshake on `wg0` is still recent afterwards.
+2. **Server 1 — stop and disable everything, remove the bot token**
+   ```bash
+   systemctl disable --now awg-quick@awg0 wg-quick@wg1 awg-pbr.service awg-update.timer awg-nftset.service
+   shred -u /etc/awg/telegram.env
+   ```
+   Verify: `systemctl list-units 'awg*' 'wg-quick*'` shows nothing active.
+3. **Hoster — delete Server 1.** Manual, in the hoster panel. No rollback after this.
+4. **Access hygiene (Server 2 and Server 3)**
+   ```bash
+   sed -i '/claude-deploy/d' /root/.ssh/authorized_keys        # if the deploy key is no longer needed
+   cat > /etc/ssh/sshd_config.d/10-hardening.conf <<'EOF'
+   PasswordAuthentication no
+   PermitRootLogin prohibit-password
+   EOF
+   sshd -t && systemctl reload ssh
+   ```
+   Verify from your workstation, in a **new** terminal while the old session stays
+   open: key login works, password login is refused.
+5. **Repo:** run Part C of the plan (RETIRED markers).
