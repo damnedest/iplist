@@ -44,7 +44,7 @@ DisableCookies = off                # keep WG cookie DoS protection
 
 # Peers are appended by scripts/awg-add-client.sh in exactly this shape:
 # [Peer]
-# # client: <name>
-# PublicKey = <CLIENT_PUBLIC_KEY>
-# PresharedKey = <CLIENT_PSK>
+# # client: NAME
+# PublicKey = CLIENT_PUBLIC_KEY
+# PresharedKey = CLIENT_PSK
 # AllowedIPs = 10.9.0.X/32

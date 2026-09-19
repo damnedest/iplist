@@ -1,6 +1,6 @@
 [Unit]
 Description=AWG CIDR set refresh from fork
-After=network-online.target
+After=network-online.target wg-quick@wg1.service awg-pbr.service
 Wants=network-online.target
 
 [Service]

@@ -4,6 +4,8 @@ Description=AWG policy-based routing floor (fwmark 0x1 -> table 100, fail-closed
 # keeps marked traffic from leaking to the direct egress.
 After=network-online.target
 Wants=network-online.target
+# ordering only: the floor must exist before wg1 installs its preferred route
+Before=wg-quick@wg1.service
 
 [Service]
 Type=oneshot
