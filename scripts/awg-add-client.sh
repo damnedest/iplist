@@ -54,15 +54,19 @@ peer_pubkey() {
         }' "$AWG_CONF"
 }
 
-# Rewrite server conf without the [Peer] block of NAME (keeps perms/inode).
+# Rewrite server conf without the [Peer] block of NAME. Atomic: written to a temp
+# file in the same directory (so the rename is same-filesystem), mode forced to 600
+# as the runbook mandates, then renamed over the original — a crash mid-write can
+# only leave the stale temp file behind, never a truncated/partial live conf.
 delete_peer_block() {
-    local tmp; tmp="$(mktemp)"
+    local tmp; tmp="$(mktemp "$(dirname "$AWG_CONF")/.$(basename "$AWG_CONF").XXXXXX")" || die "mktemp failed for $AWG_CONF"
     awk -v n="$1" '
         /^\[Peer\]/ { if (buf != "" && !skip) printf "%s", buf; buf = $0 "\n"; skip = 0; inpeer = 1; next }
         inpeer { buf = buf $0 "\n"; if ($0 == "# client: " n) skip = 1; next }
         { print }
-        END { if (buf != "" && !skip) printf "%s", buf }' "$AWG_CONF" > "$tmp"
-    cat "$tmp" > "$AWG_CONF"; rm -f "$tmp"
+        END { if (buf != "" && !skip) printf "%s", buf }' "$AWG_CONF" > "$tmp" || { rm -f "$tmp"; die "rewrite of $AWG_CONF failed"; }
+    chmod 600 "$tmp" || { rm -f "$tmp"; die "chmod of temp conf failed"; }
+    mv -f "$tmp" "$AWG_CONF" || { rm -f "$tmp"; die "atomic replace of $AWG_CONF failed"; }
 }
 
 next_free_ip() {

@@ -93,6 +93,8 @@ grep -q '^# client: bob$' "$T/awg0.conf" || fail "bob block lost"
 grep -q '^# client: existing$' "$T/awg0.conf" || fail "existing block lost"
 grep -q '^\[Interface\]' "$T/awg0.conf" || fail "interface section lost"
 test ! -f "$T/clients/alice.conf" || fail "client file not removed"
+[ -n "$(find "$T/awg0.conf" -perm 600)" ] || fail "conf mode not 600 after atomic rewrite"
+[ -z "$(find "$T" -maxdepth 1 -name '.awg0.conf.*')" ] || fail "temp conf file left behind after remove"
 
 # 5. bad name rejected, conf untouched
 before="$(cat "$T/awg0.conf")"
