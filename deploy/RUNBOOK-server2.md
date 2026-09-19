@@ -87,3 +87,35 @@ The handshake won't complete until Server 1 is up and pointed at this box
 (see `deploy/RUNBOOK-server1.md`). After Server 1 is configured and Step 4's
 peer key is filled in, `wg show wg0` should show a recent handshake and rising
 transfer counters.
+
+## 8. Add a second front (Server 3) — live, no tunnel restart
+
+Server 3 uses its own /30 (`10.9.10.0/30`). Apply live first, then persist. Server 1's
+tunnel must not drop at any point.
+
+```bash
+# live
+ip addr add 10.9.10.2/30 dev wg0
+wg set wg0 peer <SERVER3_WG1_PUBLIC_KEY> allowed-ips 10.9.10.1/32
+```
+Persist in `/etc/wireguard/wg0.conf` (see `deploy/server2/wg0.conf.example`):
+- `Address = 10.9.9.2/30, 10.9.10.2/30`
+- second `[Peer]` block for Server 3.
+
+Verify:
+```bash
+wg-quick strip wg0 >/dev/null && echo "conf parses"     # MUST pass or wg0 dies on reboot
+wg show wg0                       # two peers; Server 1 handshake still recent
+ip -4 addr show dev wg0           # both /30 addresses
+ping -c 2 10.9.10.1               # once Server 3's wg1 is up
+```
+
+## 9. Remove Server 1's peer (only after Server 1 is decommissioned — RUNBOOK-server3.md §12)
+
+```bash
+wg set wg0 peer <SERVER1_WG1_PUBLIC_KEY> remove
+ip addr del 10.9.9.2/30 dev wg0
+```
+Then delete the Server 1 `[Peer]` block from `wg0.conf` and set `Address = 10.9.10.2/30`.
+Verify: `wg-quick strip wg0 >/dev/null && wg show wg0` shows only Server 3, with a
+recent handshake.

@@ -1,12 +1,18 @@
 # /etc/wireguard/wg0.conf on Server 2 (target-jurisdiction egress gateway).
-# Fill <PLACEHOLDERS>. Generate keys: wg genkey | tee privkey | wg pubkey > pubkey
+# One WG interface, one /30 per front. Fill <PLACEHOLDERS>.
+# Generate keys: wg genkey | tee privkey | wg pubkey > pubkey
 [Interface]
-Address = 10.9.9.2/30
+Address = 10.9.9.2/30, 10.9.10.2/30
 ListenPort = 51820
 PrivateKey = <SERVER2_PRIVATE_KEY>
 # no default-route games here; this box just NATs what arrives on wg0
 
 [Peer]
-# Server 1
+# Server 1 (AWG 2.0 front) — remove after Server 1 is decommissioned
 PublicKey = <SERVER1_WG1_PUBLIC_KEY>
 AllowedIPs = 10.9.9.1/32
+
+[Peer]
+# Server 3 (AWG 3.1 front)
+PublicKey = <SERVER3_WG1_PUBLIC_KEY>
+AllowedIPs = 10.9.10.1/32
