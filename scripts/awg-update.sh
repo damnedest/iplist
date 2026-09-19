@@ -48,14 +48,21 @@ if diff -q "$SNAPSHOT" "$LST" >/dev/null; then
     exit 0
 fi
 
-added="$(comm -13 "$SNAPSHOT" "$LST" | wc -l | tr -d ' ')"
-removed="$(comm -23 "$SNAPSHOT" "$LST" | wc -l | tr -d ' ')"
+# The list is in numeric CIDR order, but comm needs sorted input (GNU comm aborts on
+# unsorted files, BSD comm silently miscounts). Sort AND compare under LC_ALL=C: the
+# order check inside comm follows the locale too, and en_US.UTF-8 collation disagrees
+# with a C-sorted file on '.' and '/'.
+OLD_SORTED="$(mktemp)"; NEW_SORTED="$(mktemp)"
+trap 'rm -f "$OLD_SORTED" "$NEW_SORTED"' EXIT
+LC_ALL=C sort -u "$SNAPSHOT" > "$OLD_SORTED"
+LC_ALL=C sort -u "$LST"      > "$NEW_SORTED"
+ccomm() { LC_ALL=C comm "$@" "$OLD_SORTED" "$NEW_SORTED"; }
+added="$(ccomm -13 | wc -l | tr -d ' ')"
+removed="$(ccomm -23 | wc -l | tr -d ' ')"
 sample="$(
-    { comm -13 "$SNAPSHOT" "$LST" | sed 's/^/+ /'; comm -23 "$SNAPSHOT" "$LST" | sed 's/^/- /'; } | head -30
+    { ccomm -13 | sed 's/^/+ /'; ccomm -23 | sed 's/^/- /'; } | head -30
 )"
-more_added="$(comm -13 "$SNAPSHOT" "$LST" | wc -l | tr -d ' ')"
-more_removed="$(comm -23 "$SNAPSHOT" "$LST" | wc -l | tr -d ' ')"
-total_changes=$(( more_added + more_removed ))
+total_changes=$(( added + removed ))
 suffix=""
 [ "$total_changes" -gt 30 ] && suffix=$'\n…and '"$(( total_changes - 30 ))"" more"
 
