@@ -55,8 +55,11 @@
 ### 2.3 As-built Server 1, которое наследует Server 3
 Шаблоны в `deploy/server1/` отражают июльский план, а не фактическое состояние. Server 3
 ставится по as-built:
-- AWG в **userspace** (`amneziawg-go` в `/usr/bin`), override `awg-quick@.service` с
-  `Environment=AWG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go`. `wg1` — ядерный модуль.
+- AWG в **userspace** (`amneziawg-go` в `/usr/bin`). `awg-quick` из tools 3.1 сам
+  падает на `amneziawg-go`, если нет `/sys/module/amneziawg` и бинарь в `PATH`
+  (переменная `WG_QUICK_USERSPACE_IMPLEMENTATION`, по умолчанию `amneziawg-go`), поэтому
+  systemd-override не нужен; runbook вместо этого проверяет `pgrep amneziawg-go`.
+  `wg1` — ядерный модуль.
 - `awg-pbr.service` — **независимый always-on пол**: правило `ip rule fwmark 0x1 lookup 100`,
   `blackhole default table 100 metric 100`, правила `ip rule to <Telegram CIDR> lookup 100`.
   Без `Requires=wg-quick@wg1`. `ExecStop` удаляет только свой blackhole
@@ -83,9 +86,9 @@ userspace, потому что он уже проверен в бою.
    `/usr/bin/amneziawg-go`.
 3. `amneziawg-tools`: `git checkout v3.1.20260812`, `make -C src && make -C src install`.
    Даёт `awg`, `awg-quick`, `awg-quick@.service`. Старые tools параметры 3.1 не парсят.
-4. Override `/etc/systemd/system/awg-quick@.service.d/userspace.conf` с переменной
-   `AWG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go`.
-5. `apt install wireguard nftables git make php-cli curl qrencode`.
+4. Override systemd-юнита не нужен (см. §2.3); проверка — `pgrep -a amneziawg-go` после
+   поднятия `awg0`.
+5. `apt install wireguard nftables git make php-cli curl qrencode build-essential`.
 
 Проверка: `awg --version` и `amneziawg-go --version` показывают 3.1.
 
@@ -129,7 +132,6 @@ deploy/server3/
   wg1.conf.example             # Table=off, PostUp/PostDown маршрута table 100
   awg-pbr.service              # as-built: независимый пол, blackhole, Telegram rules
   awg-nftset.service
-  awg-quick-userspace.conf     # drop-in для awg-quick@.service
   awg-update.service, awg-update.timer, telegram.env.example
   nftables-awg.nft
 deploy/RUNBOOK-server3.md      # пошагово, каждая секция с проверкой
