@@ -1,0 +1,50 @@
+# /etc/amnezia/amneziawg/awg0.conf on Server 3 (client-facing AmneziaWG 3.1).
+# Runs in USERSPACE (amneziawg-go); awg-quick picks it automatically when the kernel
+# module is absent. The whole obfuscation profile lives HERE and only here:
+# scripts/awg-add-client.sh copies these keys verbatim into every client config.
+#
+# Generate the profile once at deploy time (RUNBOOK-server3.md §5). Rules:
+#   * S1..S4 must be >= 12 (Header Protection uses them as nonce material).
+#   * H1..H4 are four NON-overlapping uint32 ranges, none containing 1..4.
+#   * Jmax must stay well below the WAN MTU (junk packets must not fragment).
+#   * I1..I5 are client-side only (README: "no need to specify on both sides").
+#     Leave empty here; add real CPS signatures on clients later if needed.
+[Interface]
+Address = 10.9.0.1/24
+ListenPort = <AWG0_PORT>            # random high UDP port chosen at deploy, NOT 51820
+PrivateKey = <SERVER3_AWG_PRIVATE_KEY>
+
+# --- junk packets before handshake (client-side semantics, kept symmetric) ---
+Jc = 6
+Jmin = 40
+Jmax = 120
+
+# --- message paddings (server-side: must match clients; >= 12 for header protection) ---
+S1 = <S1>
+S2 = <S2>
+S3 = <S3>
+S4 = <S4>
+
+# --- message type headers (server-side: must match clients; 4 disjoint ranges) ---
+H1 = <H1_LO>-<H1_HI>
+H2 = <H2_LO>-<H2_HI>
+H3 = <H3_LO>-<H3_HI>
+H4 = <H4_LO>-<H4_HI>
+
+# --- AWG 3.x ---
+HeaderProtectionKey = <HPK>         # awg genkey
+ContentPaddingAddition = 0-64       # random extra padding on transport payload
+RekeyAfterTime = 100-140            # WG default 120
+RekeyTimeout = 4-8                  # WG default 5
+RejectAfterTime = 170-190           # WG default 180
+KeepaliveTimeout = 8-14             # WG default 10
+MaxHandshakeAttempts = 12-20
+RandomTrailers = on
+DisableCookies = off                # keep WG cookie DoS protection
+
+# Peers are appended by scripts/awg-add-client.sh in exactly this shape:
+# [Peer]
+# # client: <name>
+# PublicKey = <CLIENT_PUBLIC_KEY>
+# PresharedKey = <CLIENT_PSK>
+# AllowedIPs = 10.9.0.X/32

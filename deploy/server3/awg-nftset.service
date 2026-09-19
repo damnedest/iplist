@@ -1,0 +1,12 @@
+[Unit]
+Description=Reload generated AWG CIDR set into nftables after boot
+After=nftables.service
+Requires=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /opt/iplist/generated/awg-set.nft
+
+[Install]
+WantedBy=multi-user.target

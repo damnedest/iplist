@@ -1,0 +1,9 @@
+[Unit]
+Description=AWG CIDR set refresh from fork
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/iplist
+ExecStart=/usr/bin/make awg-update

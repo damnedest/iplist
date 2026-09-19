@@ -1,0 +1,18 @@
+# /etc/wireguard/wg1.conf on Server 3 (plain kernel WireGuard uplink to Server 2).
+# Table = off: wg-quick must NOT touch the main table. The preferred route in
+# table 100 is owned by THIS file (PostUp/PostDown); the blackhole floor and the
+# fwmark rule are owned by awg-pbr.service and stay up even when wg1 is down.
+[Interface]
+Address = 10.9.10.1/30
+PrivateKey = <SERVER3_WG1_PRIVATE_KEY>
+Table = off
+MTU = 1420
+PostUp = ip route replace default dev wg1 table 100
+PostDown = ip route del default dev wg1 table 100 || true
+
+[Peer]
+# Server 2
+PublicKey = <SERVER2_WG0_PUBLIC_KEY>
+Endpoint = <SERVER2_PUBLIC_IP>:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
